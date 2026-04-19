@@ -6,7 +6,6 @@
     <title>학점 트레이딩 뷰 - GPA Predictor</title>
     <meta name="description" content="기술적 분석 프레임워크를 활용한 나의 다음 학기 학점 예측 및 분석 가이드">
     
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -30,9 +29,15 @@
 
         <main class="main-content">
             <section class="input-section">
-                <div class="section-header">
+                <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>학기별 학점 입력</h2>
-                    <span class="max-gpa-info">만점: 4.3</span>
+                    <div class="max-gpa-selector" style="font-size: 0.9rem; color: var(--text-secondary);">
+                        <label for="max-gpa-select">만점 기준:</label>
+                        <select id="max-gpa-select" style="padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+                            <option value="4.3" selected>4.3 만점</option>
+                            <option value="4.5">4.5 만점</option>
+                        </select>
+                    </div>
                 </div>
                 
                 <div id="semester-list" class="semester-list">
@@ -45,27 +50,23 @@
                         초과 학기 추가
                     </button>
                     <button id="analyze-btn" class="btn btn-primary">
-                        차트 분석하기
+                        🤖 AI 차트 분석하기
                     </button>
                 </div>
             </section>
 
             <section class="chart-section" style="display: none;" id="analysis-results">
-                <div class="drawing-tools" id="drawing-tools">
-                    <button id="draw-support-btn" class="btn btn-secondary tool-btn" data-tool="support">🟢 지지선 긋기</button>
-                    <button id="draw-resistance-btn" class="btn btn-secondary tool-btn" data-tool="resistance">🔴 저항선 긋기</button>
-                    <button id="clear-drawings-btn" class="btn btn-secondary">🗑️ 선 지우기</button>
+                <div class="drawing-tools">
                     <button id="toggle-yaxis-btn" class="btn btn-secondary">🙈 축 숫자 숨기기</button>
                 </div>
                 <h2>✨ 학점 차트 분석기 ✨</h2>
                 <div class="chart-container" style="position: relative;">
-                    <canvas id="drawingOverlay" style="position: absolute; top:0; left:0; pointer-events: none; z-index: 10; width: 100%; height: 100%;"></canvas>
                     <canvas id="gpaChart"></canvas>
                 </div>
                 <div class="prediction-box">
                     <h3>다음 학기 예측 학점</h3>
                     <div class="predicted-score" id="predicted-score">--</div>
-                    <p class="prediction-detail" id="prediction-detail">데이터를 분석해주세요.</p>
+                    <p class="prediction-detail" id="prediction-detail">데이터를 분석 중입니다...</p>
                 </div>
             </section>
         </main>
@@ -74,7 +75,7 @@
     <!-- Chart.js and Plugins -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
-    <!-- Custom Script -->
-    <script src="script.js"></script>
+    <!-- Custom Auto Script -->
+    <script src="script_auto.js?v=2"></script>
 </body>
 </html>
