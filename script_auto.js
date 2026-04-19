@@ -419,7 +419,23 @@ const drawChart = (dataPoints, nextIndex, prediction, supportLine, resistanceLin
             plugins: {
                 annotation: { annotations: annotations },
                 legend: { position: 'top' },
-                tooltip: { mode: 'index', intersect: false }
+                tooltip: { 
+                    mode: 'nearest', 
+                    intersect: true,
+                    callbacks: {
+                        title: function(items) {
+                            return items[0] ? items[0].label : '';
+                        }
+                    }
+                }
+            },
+            onClick: (evt) => {
+                // Tap on empty space dismisses tooltip on mobile
+                const chart = gpaChartInstance;
+                if (chart) {
+                    chart.tooltip.setActiveElements([], {x: 0, y: 0});
+                    chart.update('none');
+                }
             }
         }
     });
