@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 자동 분석모드 - 100 랜덤 샘플 백테스트 리포트</title>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 20px; color: #1e293b; }
+        h1 { text-align: center; color: #0f172a; margin-bottom: 5px; }
+        p.desc { text-align: center; color: #64748b; margin-bottom: 30px; font-size: 0.95rem; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; font-size: 0.85rem; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+        th { background-color: #f1f5f9; color: #334155; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.8rem; }
+        tr:hover { background-color: #f8fafc; }
+        .seq { font-family: monospace; letter-spacing: 0.05em; color: #3b82f6; font-weight: bold; background: #eff6ff; padding: 4px 8px; border-radius: 4px;}
+        .pred { font-weight: 800; font-size: 1.1rem; color: #f59e0b; }
+        .pattern { display: inline-block; padding: 4px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+        
+        .p-breakout { background-color: #fee2e2; color: #b91c1c; }
+        .p-breakdown { background-color: #1e1e1e; color: #ef4444; }
+        .p-parallel-up { background-color: #e0f2fe; color: #0369a1; }
+        .p-parallel-down { background-color: #dcfce7; color: #15803d; }
+        .p-parallel-flat { background-color: #f1f5f9; color: #475569; }
+        .p-triangle-up { background-color: #ffedd5; color: #c2410c; }
+        .p-triangle-down { background-color: #f3e8ff; color: #7e22ce; }
+
+        .comment { color: #475569; line-height: 1.4; max-width: 350px; }
+        .controls { text-align: center; margin-bottom: 20px; }
+        button { background-color: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        button:hover { background-color: #2563eb; }
+        .chart-container { height: 120px; width: 250px; }
+    </style>
+</head>
+<body>
+
+    <h1>🧠 GPA AI 패턴 분석 100선</h1>
+    <p class="desc">무작위 생성된 패턴에 대해 지지선/저항선 렌더링 및 알고리즘 판별 결과를 모두 보여줍니다.</p>
+    
+    <div class="controls">
+        <button onclick="generateReport()">새로운 샘플 100개 무작위 생성 (Refresh)</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th width="3%">#</th>
+                <th width="12%">기록 (시계열)</th>
+                <th width="20%">차트 미리보기</th>
+                <th width="15%">판별된 패턴(상황)</th>
+                <th width="5%">예측</th>
+                <th width="45%">AI 담백한 코멘트</th>
+            </tr>
+        </thead>
+        <tbody id="report-body">
+            <!-- JS Injection -->
+        </tbody>
+    </table>
+
+<script>
+const getCurveData = (data) => {
+    let curve = [];
+    const tension = 0.4;
+    const n = data.length;
+    let cps = [];
+    for(let i=0; i<n; i++) {
+        let prev = Math.max(0, i-1);
+        let next = Math.min(n-1, i+1);
+        let vX = next - prev; 
+        let vY = data[next] - data[prev];
+        cps.push({ p1x: i + vX * tension / 3, p1y: data[i] + vY * tension / 3, p2x: i - vX * tension / 3, p2y: data[i] - vY * tension / 3 });
+    }
+    
+    for(let i=0; i<n-1; i++) {
+        let p0x = i; let p0y = data[i];
+        let p1x = i+1; let p1y = data[i+1];
+        let cp1x = cps[i].p1x; let cp1y = cps[i].p1y;
+        let cp2x = cps[i+1].p2x; let cp2y = cps[i+1].p2y;
+        
+        for(let t=0; t<1; t+= 0.02) {
+            let mt = 1-t; let mt2 = mt*mt; let mt3 = mt2*mt;
+            let t2 = t*t; let t3 = t2*t;
+            let x = mt3*p0x + 3*mt2*t*cp1x + 3*mt*t2*cp2x + t3*p1x;
+            let y = mt3*p0y + 3*mt2*t*cp1y + 3*mt*t2*cp2y + t3*p1y;
+            curve.push({x, y});
+        }
+    }
+    curve.push({x: n-1, y: data[n-1]});
+    return curve;
+};
+
+const findBoundingLines = (data, limitIndex) => {
+    const curveData = getCurveData(data);
+    const validCurveData = curveData.filter(pt => pt.x <= limitIndex);
+    
+    let bestRes = null, minResArea = Infinity;
+    for (let i = 0; i < validCurveData.length - 10; i += 2) {
+        for (let j = i + 10; j < validCurveData.length; j += 2) {
+            const pA = validCurveData[i]; const pB = validCurveData[j]; const dx = pB.x - pA.x;
+            if (dx === 0) continue;
+            const m = (pB.y - pA.y) / dx; const b = pA.y - m * pA.x;
+            let isValid = true, area = 0;
+            for (let k = 0; k < validCurveData.length; k++) {
+                const pt = validCurveData[k]; const predY = m * pt.x + b;
+                if (pt.y > predY + 0.005) { isValid = false; break; }
+                area += (predY - pt.y);
+            }
+            if (isValid && area < minResArea) { minResArea = area; bestRes = { m, b }; }
+        }
+    }
+
+    let bestSup = null, minSupArea = Infinity;
+    for (let i = 0; i < validCurveData.length - 10; i += 2) {
+        for (let j = i + 10; j < validCurveData.length; j += 2) {
+            const pA = validCurveData[i]; const pB = validCurveData[j]; const dx = pB.x - pA.x;
+            if (dx === 0) continue;
+            const m = (pB.y - pA.y) / dx; const b = pA.y - m * pA.x;
+            let isValid = true, area = 0;
+            for (let k = 0; k < validCurveData.length; k++) {
+                const pt = validCurveData[k]; const predY = m * pt.x + b;
+                if (pt.y < predY - 0.005) { isValid = false; break; }
+                area += (pt.y - predY);
+            }
+            if (isValid && area < minSupArea) { minSupArea = area; bestSup = { m, b }; }
+        }
+    }
+    return { support: bestSup, resistance: bestRes };
+};
+
+const predictGPA = (inputs) => {
+    let maxGpaBase = 4.5;
+    const N = inputs.length;
+    const pastTrend = findBoundingLines(inputs, N - 2.05);
+    
+    let isHistoricalBreakoutUp = false, isHistoricalBreakdown = false;
+    let support = null, resistance = null;
+    let predictedFinal = null, detailText = "", patternClass = "", patternText = "";
+
+    // First generate the comprehensive current trend
+    const currentTrend = findBoundingLines(inputs, N);
+    let didParallelOverride = false;
+    
+    if (pastTrend.support && pastTrend.resistance && currentTrend.support && currentTrend.resistance && N >= 3) {
+        const pastResAtLatest = pastTrend.resistance.m * (N - 1) + pastTrend.resistance.b;
+        const pastSupAtLatest = pastTrend.support.m * (N - 1) + pastTrend.support.b;
+        
+        const pastParallelism = Math.abs(pastTrend.support.m - pastTrend.resistance.m);
+        const currentParallelism = Math.abs(currentTrend.support.m - currentTrend.resistance.m);
+        
+        if (currentParallelism < pastParallelism || currentParallelism < 0.08) {
+            support = currentTrend.support; resistance = currentTrend.resistance;
+            if (currentParallelism < 0.15) didParallelOverride = true;
+        } else if (inputs[N-1] > pastResAtLatest + 0.05 && inputs[N-1] > inputs[N-2]) {
+            isHistoricalBreakoutUp = true; support = pastTrend.support; resistance = pastTrend.resistance;
+        } else if (inputs[N-1] < pastSupAtLatest - 0.05 && inputs[N-1] < inputs[N-2]) {
+            isHistoricalBreakdown = true; support = pastTrend.support; resistance = pastTrend.resistance;
+        } else {
+            support = currentTrend.support; resistance = currentTrend.resistance;
+        }
+    } else {
+        support = currentTrend.support;
+        resistance = currentTrend.resistance;
+    }
+
+    if (isHistoricalBreakoutUp) {
+        let upperTarget = inputs[N-1] + resistance.m + 0.15;
+        upperTarget = Math.max(upperTarget, inputs[N-1] + 0.15);
+        predictedFinal = Math.max(0, Math.min(maxGpaBase, upperTarget));
+        detailText = "🔥 저항선 돌파(Breakout) 대성공! 억눌려있던 최근 추세를 깨부수고 상방 모멘텀으로 저항선을 완벽하게 뚫어냈습니다. 다음 학기도 강한 상승장이 기대됩니다!";
+        patternClass = "p-breakout"; patternText = "🚀 저항선 상방 돌파";
+    } else if (isHistoricalBreakdown) {
+        let lowerTarget = inputs[N-1] + support.m - 0.15;
+        lowerTarget = Math.min(lowerTarget, inputs[N-1] - 0.15);
+        predictedFinal = Math.max(0, Math.min(maxGpaBase, Math.max(0, lowerTarget)));
+        detailText = "💀 지지선 붕괴(Breakdown) 발생! 그동안 버텨주던 마지노선이 뚫리며 추세가 하방으로 완전히 꺾였습니다. 끝없는 하락을 막으려면 당장 책을 펴십시오!";
+        patternClass = "p-breakdown"; patternText = "💀 지지선 하방 붕괴";
+    } else if (support && resistance) {
+        const slopeS = support.m, slopeR = resistance.m;
+        const predSupp = support.m * N + support.b, predRes = resistance.m * N + resistance.b;
+        let raw = (predSupp + predRes) / 2;
+        const lastVal = inputs[N-1], currentRes = resistance.m * (N-1) + resistance.b, currentSupp = support.m * (N-1) + support.b;
+        
+        const trueWidth = currentRes - currentSupp;
+        const widthForCalcs = Math.max(trueWidth, 0.001);
+        const distRes = Math.abs(currentRes - lastVal), distSupp = Math.abs(lastVal - currentSupp);
+
+        let isParallel = Math.abs(slopeS - slopeR) < 0.08 || didParallelOverride;
+        let widthAtStart = resistance.b - support.b;
+        let isConverging = trueWidth < widthAtStart;
+        
+        let isTouchingUpper = distRes <= widthForCalcs * 0.25 || distRes < 0.05;
+        let isTouchingLower = distSupp <= widthForCalcs * 0.25 || distSupp < 0.05;
+        let isApex = isConverging && (trueWidth <= 0.15);
+
+        if (isApex) {
+            const isRecentUp = inputs[N-1] >= inputs[N-2];
+            if (isRecentUp) {
+                predictedFinal = Math.max(0, Math.min(maxGpaBase, currentRes + 0.25));
+                detailText = "🧨 수렴 끝자락 꼭짓점(Apex) 도달! 응축된 에너지가 최근의 상승 모멘텀을 타고 상방으로 강하게 폭발(Breakout)합니다!";
+                patternClass = "p-breakout"; patternText = "🧨 기습 상방 돌파";
+            } else {
+                predictedFinal = Math.max(0, Math.min(maxGpaBase, Math.max(0, currentSupp - 0.25)));
+                detailText = "🧨 수렴 끝자락 꼭짓점(Apex) 도달! 최근의 하락세를 이기지 못하고 밑으로 쏟아내리는(Breakdown) 치명적인 폭포수 위험 구간입니다!";
+                patternClass = "p-breakdown"; patternText = "🧨 하방 폭포수";
+            }
+        } else if (isParallel) {
+            predictedFinal = Math.max(0, Math.min(maxGpaBase, raw));
+            const avgSlope = (slopeS + slopeR) / 2;
+            
+            if (isTouchingUpper) {
+                if (avgSlope > 0.05) {
+                    detailText = "▶ 상승 채널(Bullish Trend) 상단 터치. 폭발적인 상승 추세 속에서 일시적인 숨고르기(건강한 조정)가 예상됩니다.";
+                } else if (avgSlope < -0.05) {
+                    detailText = "▶ 하락 채널(Bearish Trend) 상단 터치. 구조적 하락장 속에서 저항선에 부딪혔습니다. 추세 전환으로 착각하지 마십시오.";
+                } else {
+                    detailText = "▶ 횡보 박스권 상단 터치. 저항선 돌파에 막혀 수확 체감이 오며 다음 학기는 채널 중앙으로의 회귀가 예상됩니다.";
+                }
+                patternClass = "p-parallel-up"; patternText = "⚖️ 채널 상단 저항";
+            } else if (isTouchingLower) {
+                if (avgSlope > 0.05) {
+                    detailText = "▶ 상승 채널(Bullish Trend) 하단 터치. 굳건한 바닥 지지선을 딛고 거대한 상승 반등(Rebound)이 다시 시작될 타이밍입니다.";
+                } else if (avgSlope < -0.05) {
+                    detailText = "▶ 하락 채널(Bearish Trend) 하단 터치. 과매도(Oversold) 구간에 진입해 일시적 반등은 가능하나 우하향 채널은 여전합니다.";
+                } else {
+                    detailText = "▶ 횡보 박스권 하단 터치. 지지선을 딛고 다시 채널 중앙을 향해 무난한 기술적 반등이 시작될 구간입니다.";
+                }
+                patternClass = "p-parallel-down"; patternText = "⚖️ 채널 하단 지지";
+            } else {
+                if (avgSlope > 0.05) detailText = "▶ 뚜렷한 상승 채널(Bullish Channel) 내 순항 중. 이대로만 하면 최상위권 돌파가 무난하게 예측됩니다.";
+                else if (avgSlope < -0.05) detailText = "▶ 뚜렷한 하락 채널(Bearish Channel) 내 갇힘. 무기력하게 채널 중앙을 따라 서서히 하방으로 침몰하고 있습니다.";
+                else detailText = "▶ 안정적인 평행 박스권 횡보 중. 튀는 곳 없이 채널 중앙을 따라 무난하고 지루하게 수렴할 것으로 예측됩니다.";
+                patternClass = "p-parallel-flat"; patternText = "➖ 채널 횡보/순항";
+            }
+        } else if (isConverging) {
+            predictedFinal = Math.max(0, Math.min(maxGpaBase, raw));
+            if (isTouchingUpper) {
+                detailText = "▶ 삼각수렴(Triangle) 상단 폭 저항. 선을 완전히 뚫기에 응축 에너지가 부족하여 다시 안쪽으로 꺾여 내려올 확률이 높습니다.";
+                patternClass = "p-triangle-down"; patternText = "⛺ 수렴 상단 터치";
+            } else if (isTouchingLower) {
+                detailText = "▶ 삼각수렴(Triangle) 하단 터치. 바닥 지지에 성공하여, 상단 저항선을 향해 반등하며 더욱 뾰족하게 에너지를 모아가는 구간입니다.";
+                patternClass = "p-triangle-up"; patternText = "⛺ 수렴 하단 반등";
+            } else {
+                detailText = "▶ 삼각수렴(Triangle) 패턴 진행 중. 점차 성적 변동폭이 줄어들며 꼭짓점(Apex)을 향해 팽팽하게 에너지를 응축하고 있습니다.";
+                patternClass = "p-parallel-flat"; patternText = "⛺ 수렴 진행 중";
+            }
+        } else {
+            // Broadening Formation (Megaphone)
+            predictedFinal = Math.max(0, Math.min(maxGpaBase, raw));
+            if (isTouchingUpper) {
+                detailText = "▶ 확장형(Broadening) 채널 상단 터치. 변동성이 극대화된 상태라 채널 중앙으로 거칠게 회귀(Mean Reversion)할 확률이 높습니다.";
+                patternClass = "p-parallel-flat"; patternText = "📢 확성기 고점 (회귀)";
+            } else if (isTouchingLower) {
+                detailText = "▶ 확장형(Broadening) 채널 하단 터치. 변동성이 커지는 '확성기' 패턴 끝자락에서 중앙을 향해 과격하게 튀어 오를 수 있습니다.";
+                patternClass = "p-parallel-flat"; patternText = "📢 확성기 저점 (반등)";
+            } else {
+                detailText = "📢 확장형 채널(Megaphone) 형성 중. 위아래로 성적 변동폭이 갈수록 심해지고 있어 멘탈 관리가 필수적입니다.";
+                patternClass = "p-parallel-flat"; patternText = "📢 확성기 밴드 횡보";
+            }
+        }
+    } else {
+        predictedFinal = inputs[N-1];
+        detailText = "추세선 도출 불가. 기본 방향성을 유지할 것으로 전망됨.";
+    }
+
+
+
+    return { prediction: predictedFinal, text: detailText, pClass: patternClass, pText: patternText, support, resistance };
+}
+
+function generateSequence(len) {
+    let sequence = [];
+    let current = 2.5 + Math.random() * 1.5; 
+    sequence.push(parseFloat(current.toFixed(2)));
+    for (let i = 1; i < len; i++) {
+        let step = (Math.random() - 0.5) * 1.2;
+        current += step;
+        current = Math.max(1.5, Math.min(4.5, current));
+        sequence.push(parseFloat(current.toFixed(2)));
+    }
+    return sequence;
+}
+
+function drawMiniChart(canvasId, dataPoints, prediction, supportLine, resistanceLine) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    const nextIndex = dataPoints.length;
+    let valuesForScale = [...dataPoints];
+    if(prediction !== null) valuesForScale.push(prediction);
+    const userGpaData = [...dataPoints, prediction !== null ? prediction : null];
+    
+    const annotations = {};
+    if (supportLine) {
+        annotations.support = { type: 'line', yMin: supportLine.b, yMax: supportLine.m * nextIndex + supportLine.b, xMin: 0, xMax: nextIndex, borderColor: 'rgba(34, 197, 94, 0.7)', borderWidth: 2, borderDash: [5, 5] };
+    }
+    if (resistanceLine) {
+        annotations.resistance = { type: 'line', yMin: resistanceLine.b, yMax: resistanceLine.m * nextIndex + resistanceLine.b, xMin: 0, xMax: nextIndex, borderColor: 'rgba(239, 68, 68, 0.7)', borderWidth: 2, borderDash: [5, 5] };
+    }
+
+    const labels = Array.from({length: nextIndex}, (_, i) => String(i + 1));
+    labels.push('P');
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: userGpaData,
+                segment: {
+                    borderColor: ctx => ctx.p0DataIndex < nextIndex - 1 ? '#2563eb' : '#f59e0b',
+                    borderDash: ctx => ctx.p0DataIndex < nextIndex - 1 ? undefined : [2, 2],
+                },
+                pointBackgroundColor: ctx => ctx.dataIndex === nextIndex ? '#f59e0b' : '#fff',
+                pointBorderColor: ctx => ctx.dataIndex === nextIndex ? '#b45309' : '#2563eb',
+                pointBorderWidth: 1, pointRadius: ctx => ctx.dataIndex === nextIndex ? 4 : 2,
+                fill: false, tension: 0.4
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, annotation: { annotations: annotations }, tooltip: { enabled: false } },
+            scales: {
+                x: { display: false },
+                y: { display: false, suggestedMin: Math.max(0, Math.min(...valuesForScale) - 0.2), suggestedMax: Math.min(4.5, Math.max(...valuesForScale) + 0.2) }
+            },
+            layout: { padding: 5 }
+        }
+    });
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function generateReport() {
+    const tbody = document.getElementById('report-body');
+    tbody.innerHTML = ''; 
+
+    for(let i=1; i<=100; i++) {
+        const lengths = [4, 6, 8, 10];
+        const len = lengths[Math.floor(Math.random() * lengths.length)];
+        const inputs = generateSequence(len);
+        const result = predictGPA(inputs);
+        const canvasId = `chart-${i}`;
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${i}</td>
+            <td><span class="seq" style="font-size:0.75rem;">[${inputs.join(', ')}]</span></td>
+            <td><div class="chart-container"><canvas id="${canvasId}"></canvas></div></td>
+            <td><span class="pattern ${result.pClass}">${result.pText}</span></td>
+            <td class="pred">${result.prediction !== null ? result.prediction.toFixed(2) : '--'}</td>
+            <td class="comment">${result.text}</td>
+        `;
+        tbody.appendChild(tr);
+        
+        // Draw the chart immediately
+        drawMiniChart(canvasId, inputs, result.prediction, result.support, result.resistance);
+        
+        // Yield to browser every 10 rows to prevent freezing
+        if (i % 10 === 0) await sleep(5);
+    }
+}
+
+// Initial Generation
+generateReport();
+</script>
+</body>
+</html>
